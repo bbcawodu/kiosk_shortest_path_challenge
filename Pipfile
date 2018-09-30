@@ -1,0 +1,18 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+django-environ = "*"
+googlemaps = "*"
+gunicorn = "*"
+psycopg2-binary = "*"
+SQLAlchemy = "*"
+alembic = "*"
+geopy = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.6"

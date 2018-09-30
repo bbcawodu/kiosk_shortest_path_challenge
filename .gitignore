@@ -1,0 +1,8 @@
+.DS_Store
+*/.DS_STORE
+.idea/
+idea/
+*.pyc
+# local.env
+.pytest_cache
+venv/
