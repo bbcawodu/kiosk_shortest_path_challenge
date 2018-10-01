@@ -1,43 +1,124 @@
 import copy
+import sys
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from db_models import KioskLocations
 from db_models import TravelDiatances
 from settings import DATABASE_URL
-from graph_module import Graph, Vertex
+from graph_module import Graph, Vertex, PriorityQueue
 
 
-def knightTour(n,path,u,limit):
-  u.setColor('gray')
-  path.append(u)
-  if n < limit:
-    nbrList = orderByMovesAvail(u)
-    i = 0
-    done = False
-    while i < len(nbrList) and not done:
-      if nbrList[i].getColor() == 'white':
-        done = knightTour(n+1, path, nbrList[i], limit)
-      i = i + 1
-    if not done:  # prepare to backtrack
-      path.pop()
-      u.setColor('white')
-  else:
-    done = True
-  return done
+def get_two_disjoint_vertex_paths(graph, original_start):
+  start = copy.copy(original_start)
+  path_1 = [start]
+  path_2 = [start]
+  final_path_length = graph.numVertices//2 + 1
+  graph_copy = copy.copy(graph)
+
+  while len(path_1) < final_path_length:
+    max_intermediate_vertices_to_closest = final_path_length - len(path_1)
+
+    graph_copy = copy.copy(graph_copy)
+    if len(path_1) > 1:
+      for vertex in path_1:
+        if vertex.id != start.getId() and vertex.getId() in graph_copy:
+          graph_copy.delVertex(vertex.getId())
+
+    generate_prims_spanning_tree(graph_copy, start)
+    vertices_without_start = list(vertex for vertex in graph_copy if vertex.id != start.getId())
+
+    verts_with_path_lengths = get_path_lengths(vertices_without_start)
+    for vert_with_len in verts_with_path_lengths:
+      if vert_with_len[0] < max_intermediate_vertices_to_closest:
+        closest_kiosk = vert_with_len[1]
+        break
+
+    path = return_path_by_traversing_predecessor_refs(closest_kiosk)[1:]
+    path = list(reversed(path))
+
+    if path:
+      path_1.extend(path)
+    else:
+      path_1.append(closest_kiosk)
+
+    start = closest_kiosk
 
 
-def orderByMovesAvail(n):
-  resList = []
-  for v in n.getConnections():
-    if v.getColor() == 'white':
-      c = 0
-      for w in v.getConnections():
-        if w.getColor() == 'white':
-          c = c + 1
-      resList.append((c,v))
-  resList.sort(key=lambda x: x[0])
 
-  return [y[1] for y in resList]
+  graph_copy = copy.copy(graph)
+  start = copy.copy(original_start)
+  for vertex in path_1:
+    if vertex.getId() != start.getId() and vertex.getId() in graph_copy:
+      graph_copy.delVertex(vertex.getId())
+
+  while len(path_2) < final_path_length:
+    max_distance_path = final_path_length - len(path_2)
+
+    graph_copy = copy.copy(graph_copy)
+    if len(path_2) > 1:
+      for vertex in path_2:
+        if vertex.id != start.getId() and vertex.getId() in graph_copy:
+          graph_copy.delVertex(vertex.getId())
+
+    generate_prims_spanning_tree(graph_copy, start)
+    vertices_without_start = list(vertex for vertex in graph_copy if vertex.id != start.getId())
+
+    verts_with_path_lengths = get_path_lengths(vertices_without_start)
+    for vert_with_len in verts_with_path_lengths:
+      if vert_with_len[0] < max_distance_path:
+        closest_kiosk = vert_with_len[1]
+        break
+
+    path = return_path_by_traversing_predecessor_refs(closest_kiosk)[1:]
+    path = list(reversed(path))
+
+    if path:
+      path_2.extend(path)
+    else:
+      path_2.append(closest_kiosk)
+
+    start = closest_kiosk
+
+  return path_1, path_2
+
+
+def get_path_lengths(vertices):
+  verts_with_lengths = []
+  for vertex in vertices:
+    path = return_path_by_traversing_predecessor_refs(vertex)[1:]
+    vert_with_len = (len(path), vertex)
+    verts_with_lengths.append(vert_with_len)
+  verts_with_lengths.sort(key=lambda x: x[0])
+  verts_with_lengths = list(reversed(verts_with_lengths))
+
+  return verts_with_lengths
+
+def generate_prims_spanning_tree(G,start):
+  pq = PriorityQueue()
+  for v in G:
+    v.setDistance(sys.maxsize)
+    v.setPred(None)
+  start.setDistance(0)
+  pq.buildHeap([(v.getDistance(),v) for v in G])
+  while not pq.isEmpty():
+    currentVert = pq.delMin()
+    for nextVert in currentVert.getConnections():
+      newCost = currentVert.getWeight(nextVert)
+      if nextVert in pq and newCost<nextVert.getDistance():
+        nextVert.setPred(currentVert)
+        nextVert.setDistance(newCost)
+        pq.setKeyForValue(nextVert, newCost)
+
+
+def return_path_by_traversing_predecessor_refs(start):
+  path = [start]
+
+  current = start
+  while (current.getPred()):
+    current = current.getPred()
+    path.append(current)
+  
+  return path
 
 
 def add_locations_and_edges_to_graph(kiosk_locations, db_session):
@@ -72,15 +153,19 @@ def main():
   kiosk_locations = db_session.query(KioskLocations)
   kiosk_graph = add_locations_and_edges_to_graph(kiosk_locations, db_session)
 
-  # path = []
-  # start = kiosk_graph.getVertex(51)
-  # found = knightTour(1,path,start,51)
-  # print(found)
-  # print([vertex.db_row.name for vertex in path])
+  path_1, path_2 = get_two_disjoint_vertex_paths(kiosk_graph, kiosk_graph.getVertex(51))
+  path_1_string = "Path 1 is: "
+  for vertex in path_1:
+    path_1_string = path_1_string + vertex.db_row.name + ", "
+  path_1_string = path_1_string[:-2]
 
-  for v in kiosk_graph:
-    for w in v.getConnections():
-      print("( %s , %s , %s )" % (v.db_row.name, w.db_row.name, v.getWeight(w)))
+  path_2_string = "Path 2 is: "
+  for vertex in path_2:
+    path_2_string = path_2_string + vertex.db_row.name + ", "
+  path_2_string = path_2_string[:-2]
+
+  return_string = path_1_string + "\n" + path_2_string
+  print(return_string)
 
   db_session.close()
 

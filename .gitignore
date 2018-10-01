@@ -3,6 +3,6 @@
 .idea/
 idea/
 *.pyc
-# local.env
+local.env
 .pytest_cache
 .venv/
